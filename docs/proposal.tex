@@ -1,15 +1,13 @@
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage{parskip}
-\usepackage{enumitem}
 \usepackage{titlesec}
 \usepackage{xcolor}
 \usepackage{hyperref}
 
 \titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
-\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
 
-\title{\vspace{-1.5cm}A Flexible Telemetry and Control Platform for Embedded Systems}
+\title{\vspace{-1.5cm}Janus: Telemetry and Control Platform for Embedded Systems\\\large Project Proposal}
 \author{}
 \date{}
 
@@ -18,29 +16,34 @@
 \maketitle
 \vspace{-1cm}
 
-\section*{Overview}
+\section*{Intended Use}
 
-A user writes firmware that exposes the components they care about in their embedded system as a JSON schema, declaring both what data it sends (telemetry) and what commands it accepts (control). From there, the platform handles storing and routing that data, letting users view and filter live and past telemetry, and letting them send commands back to the device, all without the platform needing to know anything specific about the hardware.
+Janus is built for anyone developing an embedded system who needs to monitor and control that system without building a custom interface from scratch for every new device. This includes students and hobbyists working on personal projects, small teams sharing a lab's hardware, and course or research groups that need several people to observe the same physical system at once.
 
-\section*{How Data Flows}
+There are three specific levels of users who interact with Janus. An \emph{administrator} can register a new device by supplying its schema, configure which telemetry fields should trigger alerts, and manage who else can access that device and at what permission level. A \emph{viewer} can log into a web dashboard to watch a device's live telemetry and review its history. Lastly, an \emph{operator} has all of the permissions of a viewer, plus the ability to send commands back to it. All interaction occurs entirely through the web dashboard; no user other than the device's original developer ever needs to touch firmware, wiring, or code.
 
-\begin{enumerate}[leftmargin=1.5em]
-    \item Firmware reads device sensors and packages readings into a JSON string matching a defined schema, e.g.\ \texttt{\{"motor\_speed": 7.27, "motor\_angle": 67\}}.
-    \item A bridge program runs on a connected computer, reading the JSON off the embedded device's serial connection and forwarding it to our backend over the network. The reverse happens for commands (backend sends data down to the firmware).
-    \item The backend stores each device's schema and incoming telemetry generically (think ``device X has fields A, B, C'').
-    \item The frontend fetches a device's schema and automatically renders an interactive dashboard.
-\end{enumerate}
+As a concrete example, our own team is using Janus to monitor and control an STM32 microcontroller driving a motor and reading data from an IMU sensor. One teammate develops the firmware and defines its schema, while the rest of the team can view its telemetry and issue commands purely through the dashboard, with no knowledge of the underlying hardware required.
 
-\section*{Team Roles}
+\section*{Overall Functionality}
 
-\begin{description}[leftmargin=1.5em, style=nextline]
-    \item[Hardware / Firmware] Owns the physical device, the JSON schema output, and the bridge program. Responsibility ends once data can reliably flow between the firmware and the backend API.
+At its core, Janus lets a physical device describe itself once, and then be viewed and controlled generically forever after. A device's firmware declares what data it produces (telemetry) and what commands it accepts (control) as a small JSON schema. Once that schema is registered with Janus, the platform stores incoming telemetry, displays it live and historically, and routes any commands a user issues back down to the physical device.
 
-    \item[Backend] Builds the API and storage layer that any device's telemetry and commands flow through.
+As for how this is useful, watching a serial monitor is fine while a laptop is tethered to the device, but there is no simple way to check on a device or adjust its behavior once it is running unattended. Janus gives every device a persistent, shareable, remotely accessible dashboard, without requiring its developer to write a single line of front-end code. All a user has to do to add a new device to the system is write a simple schema, as opposed to building a new user interface.
 
-    \item[Frontend] Builds the dashboard that renders whatever a device's schema declares.
+Beyond the basic telemetry and control loop, Janus helps users in two additional ways. First, automated alerting is in place so that a user doesn't need to constantly watch the dashboard; the system flags abnormal readings in accordance with thresholds set by the user (for instance, a motor tilt angle outside an expected range) so problems can be caught even when no one is looking. Second, role-based access means a device can be shared safely, as a lab or team can let many people observe a system's state, while restricting who is allowed to actually send it commands.
 
-    \item[Accounts, Roles \& Alerting] Handles user accounts and permissions, so multiple people can share access to a device with different roles, plus alerting so the system can automatically flag abnormal readings.
-\end{description}
+\section*{Main Components}
+
+\textbf{Firmware} runs on the physical device itself. Its only responsibility toward the rest of the system is to read its own sensors and actuators and package that information into the agreed-upon JSON schema. All device-specific knowledge lives here and nowhere else in the system.
+
+\textbf{Bridge} is a small program running on a computer physically connected to the device. Because many embedded devices, including our own STM32, have no network hardware, the bridge exists solely to move data between the device's serial connection and the rest of Janus over the network, in both directions. Isolating this translation step here means no other component needs to know anything about serial communication at all.
+
+\textbf{Backend} stores each device's schema and its incoming telemetry, and exposes both through an API. The backend treats every device identically, in the sense that it only ever reasons about ``a device with these named fields.'' This is what allows one backend to serve every device Janus is ever connected to, rather than requiring new backend code for each one.
+
+\textbf{Frontend} is the web dashboard. It fetches a device's schema from the backend and renders an interface from it automatically, without any device-specific frontend code ever being written.
+
+\textbf{Accounts, Roles, and Alerting} sits alongside the backend and handles everything about who is allowed to do what, and when the system should proactively notify someone. A user configures alerts directly from a device's schema, choosing which fields to watch and setting the thresholds that matter to them, so this component never needs to understand what a field actually represents, only whether its value falls outside a range someone specified. We separated this from the core backend because user identity and permissions are a separate concern from telemetry storage and routing, and can be developed independently of the rest of the pipeline.
+
+The rationale behind this breakdown is that it provides a reusable software platform while also giving our four-person team a natural, non-overlapping division of work, with each component owned by one person while depending only on a well-defined interface from the others.
 
 \end{document}
