@@ -1,0 +1,46 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\title{\vspace{-1.5cm}A Flexible Telemetry and Control Platform for Embedded Systems}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+\vspace{-1cm}
+
+\section*{Overview}
+
+A user writes firmware that exposes the components they care about in their embedded system as a JSON schema, declaring both what data it sends (telemetry) and what commands it accepts (control). From there, the platform handles storing and routing that data, letting users view and filter live and past telemetry, and letting them send commands back to the device, all without the platform needing to know anything specific about the hardware.
+
+\section*{How Data Flows}
+
+\begin{enumerate}[leftmargin=1.5em]
+    \item Firmware reads device sensors and packages readings into a JSON string matching a defined schema, e.g.\ \texttt{\{"motor\_speed": 7.27, "motor\_angle": 67\}}.
+    \item A bridge program runs on a connected computer, reading the JSON off the embedded device's serial connection and forwarding it to our backend over the network. The reverse happens for commands (backend sends data down to the firmware).
+    \item The backend stores each device's schema and incoming telemetry generically (think ``device X has fields A, B, C'').
+    \item The frontend fetches a device's schema and automatically renders an interactive dashboard.
+\end{enumerate}
+
+\section*{Team Roles}
+
+\begin{description}[leftmargin=1.5em, style=nextline]
+    \item[Hardware / Firmware] Owns the physical device, the JSON schema output, and the bridge program. Responsibility ends once data can reliably flow between the firmware and the backend API.
+
+    \item[Backend] Builds the API and storage layer that any device's telemetry and commands flow through.
+
+    \item[Frontend] Builds the dashboard that renders whatever a device's schema declares.
+
+    \item[Accounts, Roles \& Alerting] Handles user accounts and permissions, so multiple people can share access to a device with different roles, plus alerting so the system can automatically flag abnormal readings.
+\end{description}
+
+\end{document}
