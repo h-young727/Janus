@@ -1,0 +1,273 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{adjustbox}
+\usetikzlibrary{arrows.meta, positioning, calc, shapes.geometric}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+\setlist{nosep}
+\setcounter{secnumdepth}{0}
+
+% ---------- user story macro ----------
+% \userstory{number}{title}{story}{preconditions}{postconditions}{epic note}
+\newcommand{\userstory}[6]{%
+  \par\begin{samepage}\medskip\noindent\textbf{#1: #2}\par\nopagebreak
+  \noindent #3\par\nopagebreak\smallskip
+  \noindent\textbf{Preconditions:}
+  \begin{itemize}[leftmargin=1.5em]#4\end{itemize}
+  \noindent\textbf{Postconditions:}
+  \begin{itemize}[leftmargin=1.5em]#5\end{itemize}
+  \noindent\textbf{Needs to be broken down?} #6\par\end{samepage}
+}
+
+\title{\vspace{-1.5cm}Janus: Telemetry and Control Platform for Embedded Systems\\\large System Requirements}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+\vspace{-1cm}
+
+%=====================================================================
+\section{Narrative Overview}
+\newcommand{\sectionbreak}{\clearpage}
+
+Janus lets people monitor and control embedded systems without building a custom interface for each device in the system. A developer simply writes small JSON descriptions for the devices they are interested in, called \emph{schemas}, which list the data the devices report (\emph{telemetry}) and the commands (\emph{control}) they accept. Once a schema is registered, Janus stores the device's telemetry, shows it live and historically in a web dashboard built from the schema, and sends commands from the dashboard back to the device.
+
+Three kinds of people use the dashboard. A \emph{viewer} can log in, see their devices, watch live telemetry, browse past telemetry, and see alerts. An \emph{operator} can do everything a viewer can, plus send commands to a device. An \emph{administrator} can do everything an operator can, plus create accounts, register and remove devices, choose who can access each device, and set alert rules. The \emph{device} itself is also an actor, in that it sends telemetry to and receives commands from Janus through the \emph{bridge}, which is a small program on a computer connected to the device.
+
+In essence, the system must let users log in and be given the right level of access, let administrators register devices, let users watch and review telemetry, flag abnormal readings automatically through alert rules, and let operators send commands to a device.
+
+%=====================================================================
+\section{Use Case Diagram}
+
+\begin{center}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tikzpicture}[
+    uc/.style={ellipse, draw, minimum width=4.4cm, minimum height=0.8cm, inner sep=0pt, font=\scriptsize, fill=white},
+    actor/.style={font=\small\bfseries, align=center},
+    assoc/.style={-, thick},
+    inc/.style={-{Stealth[length=2.5mm]}, dashed, thick},
+    gen/.style={-{Triangle[open, length=3mm, width=3mm]}, thick}
+]
+
+% system boundary
+\draw[thick, rounded corners=4pt] (1.5,-1.0) rectangle (14.6,13.2);
+\node[font=\bfseries] at (8.05,12.8) {Janus Platform};
+
+% left column use cases (viewer, operator, administrator)
+\node[uc] (uc1)  at (4.5,11.6) {1. Log In};
+\node[uc] (uc2)  at (4.5,10.4) {2. View Device List};
+\node[uc] (uc3)  at (4.5,9.2)  {3. View Live Telemetry};
+\node[uc] (uc4)  at (4.5,8.0)  {4. View Past Telemetry};
+\node[uc] (uc5)  at (4.5,6.8)  {5. View Alerts};
+\node[uc] (uc6)  at (4.5,5.6)  {6. Send Command};
+\node[uc] (uc7)  at (4.5,4.4)  {7. Create User Account};
+\node[uc] (uc8)  at (4.5,3.2)  {8. Register Device};
+\node[uc] (uc9)  at (4.5,2.0)  {9. Remove Device};
+\node[uc] (uc10) at (4.5,0.8)  {10. Manage Device Access};
+\node[uc] (uc11) at (4.5,-0.4) {11. Configure Alert Rules};
+
+% right column use cases (device side)
+\node[uc] (uc12) at (11.4,9.2) {12. Submit Telemetry};
+\node[uc] (uc13) at (11.4,7.0) {13. Evaluate Alert Rules};
+\node[uc] (uc14) at (11.4,5.6) {14. Receive Command};
+
+% actors
+\node[actor] (viewer) at (0,9.2) {};
+\node[actor] (operator) at (0,5.6) {};
+\node[actor] (admin) at (0,1.0) {};
+\node[actor] (device) at (16.0,7.4) {};
+
+% stick figure helper
+\foreach \a/\lbl in {viewer/Viewer, operator/Operator, admin/Administrator, device/Device} {
+  \draw ($(\a)+(0,0.55)$) circle (0.22);
+  \draw ($(\a)+(0,0.33)$) -- ($(\a)+(0,-0.35)$);
+  \draw ($(\a)+(-0.4,0.15)$) -- ($(\a)+(0.4,0.15)$);
+  \draw ($(\a)+(0,-0.35)$) -- ($(\a)+(-0.3,-0.9)$);
+  \draw ($(\a)+(0,-0.35)$) -- ($(\a)+(0.3,-0.9)$);
+  \node[actor] at ($(\a)+(0,-1.3)$) {\lbl};
+}
+
+% generalization: operator is a viewer, administrator is an operator
+\draw[gen] ($(operator)+(0,0.85)$) -- ($(viewer)+(0,-1.65)$);
+\draw[gen] ($(admin)+(0,0.85)$) -- ($(operator)+(0,-1.65)$);
+
+% associations: viewer
+\foreach \u in {uc1, uc2, uc3, uc4, uc5} { \draw[assoc] ($(viewer)+(0.3,0.15)$) -- (\u.west); }
+% operator
+\draw[assoc] ($(operator)+(0.4,0.15)$) -- (uc6.west);
+% administrator
+\foreach \u in {uc7, uc8, uc9, uc10, uc11} { \draw[assoc] ($(admin)+(0.4,0.15)$) -- (\u.west); }
+% device
+\draw[assoc] ($(device)+(-0.4,0.15)$) -- (uc12.east);
+\draw[assoc] ($(device)+(-0.4,0.15)$) -- (uc14.east);
+
+% include relationships
+\draw[inc] (uc12.south) -- node[right, font=\scriptsize] {\guillemotleft include\guillemotright} (uc13.north);
+\draw[inc] (uc6.east) -- node[above, font=\scriptsize] {\guillemotleft include\guillemotright} (uc14.west);
+
+\end{tikzpicture}
+\end{adjustbox}
+\end{center}
+
+%=====================================================================
+\section{Use Case Descriptions}
+
+\begin{enumerate}[leftmargin=2em, itemsep=0.6em]
+\item \textbf{Log In:} A person enters their username and password to start a session with access limited to their role.
+\item \textbf{View Device List:} A user sees the list of devices they have access to and picks one to open its dashboard.
+\item \textbf{View Live Telemetry:} A user watches a device's newest readings update on its dashboard as the device sends them.
+\item \textbf{View Past Telemetry:} A user picks a device, fields, and a time range to see the stored readings as a chart or table.
+\item \textbf{View Alerts:} A user sees the alerts that have fired for their devices, including the field, value, rule, and time.
+\item \textbf{Send Command:} An operator picks a command from a device's schema, enters a value within its limits, and sends it to the device.
+\item \textbf{Create User Account:} An administrator creates an account with a username and starting password so a new person can log in.
+\item \textbf{Register Device:} An administrator adds a device to Janus by supplying its schema, which Janus validates before creating the device.
+\item \textbf{Remove Device:} An administrator removes a device that is no longer in use so it stops appearing and accepting data.
+\item \textbf{Manage Device Access:} An administrator gives a user a viewer or operator role on a device, changes that role, or removes their access.
+\item \textbf{Configure Alert Rules:} An administrator sets a threshold on a numeric field of a device and can later edit, disable, or delete the rule.
+\item \textbf{Submit Telemetry:} A device sends a JSON reading that follows its schema through the bridge, and Janus validates and stores it.
+\item \textbf{Evaluate Alert Rules:} Janus automatically checks each new reading against the device's alert rules and records an alert for every rule broken.
+\item \textbf{Receive Command:} Janus passes a command sent from the dashboard to the bridge, which writes it to the device for the firmware to carry out.
+\end{enumerate}
+
+%=====================================================================
+\section{User Stories}
+
+\userstory{1}{Log In}
+{As a viewer, I want to log in with my username and password so that I can access my devices.}
+{\item The user has an account.
+ \item The user is not logged in.}
+{\item The user is logged in and can access the devices their role allows.}
+{No, it is already a single small task.}
+
+\userstory{2}{View Device List}
+{As a viewer, I want to see a list of my devices so that I can choose which one to open.}
+{\item The user is logged in.}
+{\item The user sees the devices they have access to, with each device's name and whether it is sending data.}
+{No, it is already a single small task.}
+
+\userstory{3}{View Live Telemetry}
+{As a viewer, I want to watch a device's readings update live so that I can see what it is doing.}
+{\item The user is logged in.
+ \item The user has access to the device.}
+{\item The dashboard shows the device's readings and updates as new readings arrive.}
+{Yes, it could be broken down into building the dashboard from the schema and streaming live readings to it.}
+
+\userstory{4}{View Past Telemetry}
+{As a viewer, I want to see a device's past readings so that I can review what happened.}
+{\item The user is logged in.
+ \item The user has access to the device.}
+{\item The user sees the stored readings for the chosen fields and time range.}
+{Yes, it could be broken down into querying the stored readings and displaying them.}
+
+\userstory{5}{View Alerts}
+{As a viewer, I want to see the alerts for my devices so that I notice abnormal readings.}
+{\item The user is logged in.}
+{\item The user sees the alerts for the devices they have access to.}
+{No, it is already a single small task.}
+
+\userstory{6}{Send Command}
+{As an operator, I want to send a command to a device so that I can control it remotely.}
+{\item The user is logged in.
+ \item The user has operator access to the device.
+ \item The command is declared in the device's schema.
+ \item The value is within the limits in the schema.}
+{\item The command is passed on to the device (see 14, Receive Command).}
+{Yes, it could be broken down into building the command form from the schema and delivering the command to the device.}
+
+\userstory{7}{Create User Account}
+{As an administrator, I want to create user accounts so that other people can log in.}
+{\item The administrator is logged in.
+ \item The username is not already in use.}
+{\item A new account exists and its user can log in.}
+{No, it is already a single small task.}
+
+\userstory{8}{Register Device}
+{As an administrator, I want to register a device by its schema so that Janus can store its data and build its dashboard.}
+{\item The administrator is logged in.
+ \item The schema is valid JSON.}
+{\item The device is registered and ready to receive telemetry, and its dashboard is built from the schema.}
+{Yes, it could be broken down into validating the schema and storing the device.}
+
+\userstory{9}{Remove Device}
+{As an administrator, I want to remove a device so that it stops appearing and accepting data.}
+{\item The administrator is logged in.
+ \item The device is registered.}
+{\item The device no longer appears in any device list and no longer accepts telemetry or commands.}
+{No, it is already a single small task.}
+
+\userstory{10}{Manage Device Access}
+{As an administrator, I want to set each user's role on a device so that I control who can view it and who can command it.}
+{\item The administrator is logged in.
+ \item The device is registered.
+ \item The user has an account.}
+{\item The user has the chosen role on the device, or no access if it was removed.}
+{Yes, it could be broken down into granting access and revoking access.}
+
+\userstory{11}{Configure Alert Rules}
+{As an administrator, I want to set alert thresholds on a device's fields so that abnormal readings are flagged automatically.}
+{\item The administrator is logged in.
+ \item The device is registered.}
+{\item The alert rule is saved and applied to every new reading.}
+{Yes, it could be broken down into creating a rule and editing or deleting a rule.}
+
+\userstory{12}{Submit Telemetry}
+{As a device, I want to send my readings to Janus in my declared format so that they are stored and shown to users.}
+{\item The device is registered.
+ \item The bridge is connected to the device and to Janus.}
+{\item The reading is stored and available for live and past viewing.
+ \item Alert rules are checked against the reading (see 13, Evaluate Alert Rules).}
+{Yes, it could be broken down into sending readings through the bridge and validating and storing them.}
+
+\userstory{13}{Evaluate Alert Rules}
+{As a viewer, I want new readings checked against alert rules so that abnormal readings are flagged without my watching.}
+{\item A new reading has been accepted (see 12, Submit Telemetry).}
+{\item An alert is recorded for each alert rule the reading breaks (see 5, View Alerts).}
+{No, it is already a single small task.}
+
+\userstory{14}{Receive Command}
+{As a device, I want to receive commands from Janus so that I can carry them out.}
+{\item A command has been sent from the dashboard (see 6, Send Command).
+ \item The bridge is connected to the device and to Janus.}
+{\item The device receives the command and can carry it out.}
+{Yes, it could be broken down into queuing the command for the bridge and having the device act on it.}
+
+%=====================================================================
+\section{Nonfunctional Requirements}
+
+\begin{itemize}[leftmargin=0pt, itemsep=0.6em, label={}]
+\item \textbf{Usability:} In a test with at least five people who have not seen Janus before, at least 60\% must complete the core tasks (log in, open a device, find its latest reading, view its past readings, and send a command) without help.
+\item \textbf{Performance:} Every user action, such as opening a dashboard or sending a command, must show its result within 1 second.
+\item \textbf{Capacity:} The system must support 10 devices and 20 users logged in at the same time, with each device sending up to 10 readings per second, while still meeting the performance requirement.
+\item \textbf{Reliability:} Every use case must work from start to finish, with no failures, throughout a five-minute demonstration.
+\item \textbf{Data Retention:} Stored telemetry older than 14 days must be deleted automatically by a cleanup that runs once a day and finishes within 5 minutes.
+\end{itemize}
+
+%=====================================================================
+\section{Glossary}
+
+\begin{description}[leftmargin=0pt, style=standard, itemsep=0.4em]
+\item[Administrator:] A user role that can do everything an operator can, and can also create accounts, register and remove devices, manage who has access to each device, and configure alert rules.
+\item[Alert:] A record created automatically when a reading breaks an alert rule. It stores the device, field, value, rule, and time.
+\item[Alert rule:] A condition on one numeric field of a device, such as ``motor temperature above 70'', that Janus checks against every new reading.
+\item[Bridge:] A small program that runs on a computer physically connected to a device. It carries data between the device's serial connection and Janus over the network, in both directions.
+\item[Device:] A single electronic component, such as a microcontroller, that sends telemetry to Janus and receives commands from it. It is one of the many components that make up an embedded system.
+\item[IMU:] Short for inertial measurement unit, a sensor chip that measures acceleration and rotation to find how something is tilted or moving.
+\item[Operator:] A user role that can do everything a viewer can and can also send commands to a device.
+\item[Role:] A level of permission given to a user for a device, which is viewer, operator, or administrator.
+\item[Schema:] A JSON description, written by the device's developer, of the fields a device reports and the commands it accepts, including types and allowed limits.
+\item[Serial connection:] A simple wired link, here over USB, through which the device and the computer running the bridge exchange text one character at a time.
+\item[Telemetry:] Data a device measures and reports about itself, such as speed, angle, or temperature, sent to Janus over time.
+\item[Viewer:] A user role that can see a device's live readings, past readings, and alerts, but cannot send commands.
+\end{description}
+
+\end{document}
