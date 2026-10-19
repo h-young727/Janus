@@ -66,3 +66,6 @@ logs/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# IDE debug launch configs (machine-specific)
+*.launch
