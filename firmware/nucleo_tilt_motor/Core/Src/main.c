@@ -112,7 +112,7 @@ int main(void)
   MX_TIM3_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  char buf[128];
+  char buf[192];
   uint16_t imu_addr = 0;
   uint8_t who_am_i = 0;
 
@@ -159,8 +159,9 @@ int main(void)
         int16_t gx = (int16_t)(raw[8] << 8 | raw[9]);
         int16_t gy = (int16_t)(raw[10] << 8 | raw[11]);
         int16_t gz = (int16_t)(raw[12] << 8 | raw[13]);
-        snprintf(buf, sizeof buf, "ax=%6d ay=%6d az=%6d  gx=%6d gy=%6d gz=%6d\r\n",
-                 ax, ay, az, gx, gy, gz);
+        snprintf(buf, sizeof buf,
+                 "{\"type\":\"telemetry\",\"t\":%lu,\"data\":{\"ax\":%d,\"ay\":%d,\"az\":%d,\"gx\":%d,\"gy\":%d,\"gz\":%d}}\r\n",
+                 (unsigned long)HAL_GetTick(), ax, ay, az, gx, gy, gz);
         uart_print(buf);
       } else {
         uart_print("IMU: read failed\r\n");
