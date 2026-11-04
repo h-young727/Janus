@@ -1,7 +1,6 @@
 import json
 import sys
-
-from device_link import read_lines
+from device_link import open_device, read_lines
 
 def parse_line(line: str):
     line = line.strip()
@@ -18,9 +17,10 @@ def parse_line(line: str):
     return msg
 
 if __name__ == "__main__":
-    for line in read_lines(sys.argv[1]):
-        msg = parse_line(line)
-        if msg is None:
-            print("skipped:", line)
-        else:
-            print("message:", msg)
+    with open_device(sys.argv[1]) as device:
+        for line in read_lines(device):
+            msg = parse_line(line)
+            if msg is None:
+                print("skipped:", line)
+            else:
+                print("message:", msg)
