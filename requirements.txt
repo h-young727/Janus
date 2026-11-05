@@ -1,0 +1,4 @@
+fastapi
+pyserial
+uvicorn[standard]
+websockets
