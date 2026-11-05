@@ -1,4 +1,4 @@
-# Remaining Work
+# Remaining work
 
 The firmware, bridge, and simulator are done and have been tested on real hardware. The device schema can be found at `schemas/nucleo_tilt_motor.json`. User story numbers (US1 to US14) refer to the product backlog in `docs/requirements.tex`.
 
