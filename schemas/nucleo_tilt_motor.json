@@ -1,0 +1,28 @@
+{
+  "device_id": "nucleo_tilt_motor",
+  "name": "Nucleo tilt and motor",
+  "description": "STM32 Nucleo-F401RE with an MPU6050 IMU and a TB6612FNG-driven DC motor",
+  "rate_hz": 10,
+  "telemetry": {
+    "tilt_deg": {"type": "number", "label": "Tilt", "unit": "deg", "min": -180, "max": 180},
+    "ax": {"type": "number", "label": "Accel X", "unit": "g", "min": -2, "max": 2},
+    "ay": {"type": "number", "label": "Accel Y", "unit": "g", "min": -2, "max": 2},
+    "az": {"type": "number", "label": "Accel Z", "unit": "g", "min": -2, "max": 2},
+    "gx": {"type": "number", "label": "Gyro X", "unit": "deg/s", "min": -250, "max": 250},
+    "gy": {"type": "number", "label": "Gyro Y", "unit": "deg/s", "min": -250, "max": 250},
+    "gz": {"type": "number", "label": "Gyro Z", "unit": "deg/s", "min": -250, "max": 250},
+    "motor_duty": {"type": "number", "label": "Motor speed", "unit": "%", "min": 0, "max": 100}
+  },
+  "commands": {
+    "set_motor": {
+      "label": "Set motor speed",
+      "args": {
+        "duty": {"type": "number", "label": "Duty", "unit": "%", "min": 0, "max": 100}
+      }
+    },
+    "stop_motor": {
+      "label": "Stop motor",
+      "args": {}
+    }
+  }
+}
