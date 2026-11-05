@@ -26,7 +26,7 @@ class Bridge:
                     self.device = device
                     print(f"device connected: {self.port}")
                     self.publish(status(self.device_id, True))
-                    for line in read_lines(device):
+                    for line in read_lines(device, 3):
                         msg = parse_line(line)
                         if msg is not None:
                             self.publish(envelope(msg, self.device_id))

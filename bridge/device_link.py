@@ -1,4 +1,5 @@
 import sys
+import time
 import serial
 from simulator import SimulatedDevice
 
@@ -7,12 +8,15 @@ def open_device(port: str, baud: int = 115200):
         return SimulatedDevice()
     return serial.Serial(port, baud, timeout=1)
 
-def read_lines(device):
+def read_lines(device, stall_seconds: float = 0):
+    last = time.monotonic()
     while True:
         raw = device.readline()
-        if not raw:
-            continue
-        yield raw.decode("utf-8", errors="replace").rstrip("\r\n")
+        if raw:
+            last = time.monotonic()
+            yield raw.decode("utf-8", errors="replace").rstrip("\r\n")
+        elif stall_seconds and time.monotonic() - last > stall_seconds:
+            raise serial.SerialException(f"no data for {stall_seconds}s")
 
 def write_line(device, line: str):
     device.write((line + "\n").encode("utf-8"))
