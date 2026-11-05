@@ -65,7 +65,7 @@ class SimulatedDevice:
         rad = math.radians(tilt)
         data = {
             "tilt_deg": round(tilt, 2),
-            "ax": round(math.sin(rad) + random.gauss(0, 0.005), 3),
+            "ax": round(-math.sin(rad) + random.gauss(0, 0.005), 3),
             "ay": round(random.gauss(0, 0.005), 3),
             "az": round(math.cos(rad) + random.gauss(0, 0.005), 3),
             "gx": round(random.gauss(0, 0.2), 2),
