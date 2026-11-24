@@ -1,0 +1,203 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[font=small]{caption}
+\usepackage{fancyvrb}
+\usepackage{needspace}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+\setlist{nosep}
+\setcounter{secnumdepth}{0}
+\fvset{fontsize=\small, xleftmargin=1.5em}
+
+\newcommand{\shotpair}[6]{%
+  \begin{figure}[H]\centering
+  \begin{minipage}[b]{#2\textwidth}\centering\includegraphics[width=\linewidth]{shots/#1}\caption{#3}\end{minipage}\hfill
+  \begin{minipage}[b]{#5\textwidth}\centering\includegraphics[width=\linewidth]{shots/#4}\caption{#6}\end{minipage}
+  \end{figure}}
+\newcommand{\shot}[3]{%
+  \begin{figure}[H]\centering\includegraphics[width=#2\textwidth]{shots/#1}\caption{#3}\end{figure}}
+
+\title{\vspace{-1.5cm}Janus: Telemetry and Control Platform for Embedded Systems\\\large User Manual}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1cm}
+
+Janus lets you watch and control an embedded device from a web browser. The device's firmware sends readings (telemetry) and accepts commands, and a schema file describes both. From that schema alone, Janus stores the readings, charts them live and over time, sends commands back to the device, raises alerts on abnormal readings, and controls who can view or command each device. This manual uses the device we built: a Nucleo board that measures its tilt and drives a small DC motor.
+
+\section{1. Installation and Deployment}
+
+\subsection{Technical Specifications}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{} l >{\raggedright\arraybackslash}X @{}}
+\toprule
+\textbf{Item} & \textbf{Specification} \\
+\midrule
+Board & STM32 Nucleo-F401RE, connected over USB \\
+Sensor & MPU6050 accelerometer and gyroscope (I2C) \\
+Motor & DC motor driven by a TB6612FNG motor driver \\
+Host computer & Windows 10 or 11 (tested on Windows 11); macOS and Linux also work \\
+Software & Python 3.11 or newer (tested on 3.14), STM32CubeIDE (to flash the firmware), a modern web browser \\
+Python packages & fastapi, uvicorn, websockets, pyserial, PyJWT, pwdlib (listed in \texttt{requirements.txt}) \\
+Connections & Dashboard and API on port 8000; device serial link at 115200 baud \\
+Data & One SQLite file, \texttt{janus.sqlite3}; readings are kept for 14 days \\
+Performance & 10 readings per second per device; tested with 10 devices and 20 open dashboards, with every reading shown within 34\,ms \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\textbf{Wiring.} Connect the parts to the Nucleo's Arduino-style headers:
+
+\begin{center}
+\begin{tabular}{@{} l l l @{}}
+\toprule
+\textbf{Part} & \textbf{Pin} & \textbf{Nucleo pin} \\
+\midrule
+MPU6050 & VCC, GND & 3V3, GND \\
+ & SDA, SCL & D14, D15 \\
+TB6612FNG & VCC, GND & 3V3, GND \\
+ & PWMA, AIN1, AIN2, STBY & D12, D11, D10, D9 \\
+ & AO1, AO2 & the motor's two leads \\
+ & VM & the motor's power supply \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Installation Steps}
+
+All commands are run in PowerShell from the \texttt{Janus} folder.
+
+\begin{enumerate}[leftmargin=1.5em, itemsep=3pt]
+\needspace{9\baselineskip}
+\item \textbf{Get the code and install the packages.}
+\begin{Verbatim}[samepage=true]
+git clone https://github.com/h-young727/Janus.git
+cd Janus
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+\end{Verbatim}
+
+\item \textbf{Flash the firmware.} Wire the board as above and plug it in. In STM32CubeIDE, choose \emph{File $\rightarrow$ Import $\rightarrow$ Existing Projects into Workspace} and select \texttt{firmware/nucleo\_tilt\_motor}. Click \emph{Run} (not \emph{Debug}, which leaves the board paused). Keep the board still for the first few seconds after it starts or resets, while it calibrates its gyroscope.
+
+\item \textbf{Start the backend.} Set four values, then start the server. Choose your own password and two long random strings.
+\begin{Verbatim}
+$env:JANUS_SECRET_KEY = "a-long-random-string"
+$env:JANUS_ADMIN_USER = "admin"
+$env:JANUS_ADMIN_PASSWORD = "adminpass1"
+$env:JANUS_BRIDGE_TOKEN = "another-long-random-string"
+python -m uvicorn backend.main:app
+\end{Verbatim}
+The first start creates the database and the administrator account. To let other computers in the lab open the dashboard, add \texttt{-{}-host 0.0.0.0} and have them visit \texttt{http://<this computer's address>:8000}.
+
+\item \textbf{Register the device.} Open \texttt{http://localhost:8000} and sign in as the administrator. Under \emph{Admin $\rightarrow$ Devices}, upload \texttt{schemas/nucleo\_tilt\_motor.json} and click \emph{Register device} (Figure~\ref{fig:register}). This is only needed once.
+
+\item \textbf{Start the bridge.} The bridge passes messages between the board and the backend. In a second terminal, activate the environment, set the same bridge token, and give the board's serial port (shown in Windows Device Manager under \emph{Ports}):
+\begin{Verbatim}
+$env:JANUS_BRIDGE_TOKEN = "another-long-random-string"
+python bridge/bridge.py --port COM3
+\end{Verbatim}
+Use \texttt{-{}-port sim} instead to run a simulated device without any hardware.
+\end{enumerate}
+
+\shot{register.png}{0.8}{Registering the device from its schema.\label{fig:register}}
+
+\textbf{If something goes wrong:}
+\begin{itemize}[leftmargin=1.5em]
+\item \emph{``JANUS\_\ldots\ must be set before starting the server''}: one of the four values in step 3 is missing in that terminal.
+\item \emph{The bridge prints ``HTTP 403''}: the bridge token does not match the backend's.
+\item \emph{The device stays offline}: check that it is registered and that the bridge's port is correct. The bridge reconnects on its own once both are fixed.
+\item \emph{\texttt{uvicorn} is blocked by Windows}: start it with \texttt{python -m uvicorn}, as shown above.
+\end{itemize}
+
+\section{2. Main Features}
+
+\begin{itemize}[leftmargin=1.5em, itemsep=2pt]
+\item \textbf{Any device, one schema.} A device is added by registering a JSON schema that lists its readings and commands. The dashboard builds its charts and command forms from that schema, with no new interface code.
+\item \textbf{Live telemetry.} Every reading appears in the dashboard as it arrives, as a value tile and a chart covering the last 15, 30, or 60 seconds. \emph{Show all charts} displays every field at once, and those charts can be dragged and resized.
+\item \textbf{Commands.} Operators send commands, such as setting the motor speed, from forms built from the schema. Values outside the schema's range are refused, and the device acknowledges each command.
+\item \textbf{Alerts.} Administrators create rules such as \emph{Tilt $>$ 30}. When a reading crosses a rule, a red banner appears at the top of the dashboard, and the alert is saved in the alert log.
+\item \textbf{Past telemetry.} Stored readings can be charted for any time range and any set of fields.
+\item \textbf{Accounts and roles.} Everyone signs in. The administrator creates accounts and gives each user a role on each device:
+\end{itemize}
+
+\begin{center}
+\begin{tabular}{@{} l l @{}}
+\toprule
+\textbf{Role} & \textbf{Can} \\
+\midrule
+Viewer & watch live and past telemetry, and see the alert log \\
+Operator & everything a viewer can, plus send commands \\
+Administrator & everything, plus manage users, devices, access, and alert rules \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}[leftmargin=1.5em, itemsep=2pt]
+\item \textbf{Reliability.} If the board is unplugged or the backend restarts, the bridge reconnects on its own and holds readings until the backend is back. The device shows as offline in the meantime.
+\item \textbf{Security.} Passwords are stored hashed, sign-ins last 60 minutes, and the backend only accepts bridges that send the shared bridge token.
+\end{itemize}
+
+\textbf{Reading the tilt device.} \emph{Tilt} is how far the breadboard is tipped side to side, toward the column A edge or the column J edge, from 0$^\circ$ when flat to $\pm$180$^\circ$ when upside down. \emph{Accel X, Y, Z} are the accelerations in g, \emph{Gyro X, Y, Z} are the rotation rates in degrees per second, and \emph{Motor speed} is the motor's duty cycle in percent.
+
+\section{3. Main Scenario: Monitoring and Controlling a Device}
+
+An operator watches the board's tilt and runs the motor.
+
+\begin{enumerate}[leftmargin=1.5em, itemsep=2pt]
+\item Open \texttt{http://localhost:8000} and sign in with your username and password (Figure~\ref{fig:login}).
+\item The \emph{Live} page opens. Pick the device from the \emph{Devices} list on the right; it should say \emph{Online}. The tiles show the latest value of every field, and the chart shows Tilt (Figure~\ref{fig:live}).
+\item Tip the board and watch the Tilt chart follow it. Click another tile, such as \emph{Gyro Y}, to chart that field instead, and use \emph{Window} to show more or less time.
+\item Click \emph{Show all charts} to see every field at once (Figure~\ref{fig:all}). Drag a chart to move it, or drag its corner to resize it. Click \emph{Show one chart} to go back.
+\item Under \emph{Commands}, enter 50 in \emph{Duty (\%)} under \emph{Set motor speed} and click \emph{Send command}. The motor spins, the result reads \emph{Acknowledged}, and the Motor speed tile changes to 50 (Figure~\ref{fig:command}).
+\item Under \emph{Stop motor}, click \emph{Send command}. The motor stops and Motor speed returns to 0.
+\end{enumerate}
+
+\shotpair{login.png}{0.45}{Signing in.\label{fig:login}}{command.png}{0.3}{A command acknowledged by the device.\label{fig:command}}
+\shot{live.png}{0.95}{The Live page: value tiles, the Tilt chart, the device list, and commands.\label{fig:live}}
+\shot{allcharts.png}{0.95}{All charts shown at once, with the motor set to 50\%.\label{fig:all}}
+
+\section{4. Additional Scenario: Giving a New Lab Member Access}
+
+An administrator adds a new user who may watch the device but not control it.
+
+\begin{enumerate}[leftmargin=1.5em, itemsep=2pt]
+\item Go to \emph{Admin $\rightarrow$ Users}, enter a username and a starting password of at least 8 characters, and click \emph{Create user} (Figure~\ref{fig:users}). Give the user their password in person.
+\item Go to \emph{Admin $\rightarrow$ Access}, pick the device in the top right, choose the new user from \emph{User}, choose \emph{Viewer} as the role, and click \emph{Save access} (Figure~\ref{fig:access}).
+\item The new user signs in and sees the device's live data, but no \emph{Commands} panel and no \emph{Admin} page (Figure~\ref{fig:viewer}).
+\item To let them control the device later, save their access again with \emph{Operator}. To remove them from the device, choose them and click \emph{Revoke access}; the device disappears from their dashboard.
+\end{enumerate}
+
+\shotpair{users.png}{0.48}{Creating a user.\label{fig:users}}{access.png}{0.48}{Giving the user viewer access.\label{fig:access}}
+\shot{viewer.png}{0.95}{The viewer's dashboard, with no Commands panel or Admin page.\label{fig:viewer}}
+
+\section{5. Additional Scenario: Catching and Reviewing Abnormal Readings}
+
+An administrator sets up an alert for large tilts, and the team reviews what happened afterwards.
+
+\begin{enumerate}[leftmargin=1.5em, itemsep=2pt]
+\item Go to \emph{Admin $\rightarrow$ Alert rules}. Choose the field \emph{Tilt}, the comparison \emph{Greater than}, and a threshold such as 10, then click \emph{Save rule} (Figure~\ref{fig:rule}). Rules can later be edited, disabled, or deleted from the list on the right.
+\item Tip the board past the threshold. A red banner appears at the top of every page, showing the time, the device, the rule, and the reading (Figure~\ref{fig:alert}). It stays until you click \emph{Dismiss} or the next alert replaces it. An alert fires once each time the reading crosses the threshold, not on every reading above it.
+\item Open \emph{Alerts} to see the alert log, a list of every alert for the selected device with its reading and time (Figure~\ref{fig:log}).
+\item Open \emph{History}. The range starts as the last minute; change \emph{From} and \emph{To} to look further back. Tick the fields to chart, such as \emph{Tilt}, and click \emph{Load readings} (Figure~\ref{fig:history}).
+\end{enumerate}
+
+\shot{rule.png}{0.95}{Creating an alert rule.\label{fig:rule}}
+\shot{alert.png}{0.95}{The alert banner on the Live page.\label{fig:alert}}
+\shot{alertlog.png}{0.95}{The alert log.\label{fig:log}}
+\shot{history.png}{0.95}{Past tilt readings loaded on the History page.\label{fig:history}}
+
+\end{document}
