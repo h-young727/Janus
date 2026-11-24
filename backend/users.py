@@ -38,6 +38,12 @@ def get_user(username: str):
     return dict(row) if row else None
 
 
+def list_usernames():
+    with connect() as db:
+        rows = db.execute("SELECT username FROM users WHERE is_admin = 0 ORDER BY username").fetchall()
+    return [row["username"] for row in rows]
+
+
 def create_user(username: str, password: str, is_admin=False):
     """Create a user with a hashed password."""
     if not username.strip() or len(password) < 8:

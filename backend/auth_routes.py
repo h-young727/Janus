@@ -13,6 +13,7 @@ from backend.users import (
     create_user,
     get_user,
     initialize_users,
+    list_usernames,
 )
 
 router = APIRouter(prefix="/api", tags=["Authentication"])
@@ -66,6 +67,16 @@ def current_user(
         "username": user["username"],
         "is_admin": bool(user["is_admin"]),
     }
+
+
+@router.get("/users")
+def list_users(username: str = Depends(get_current_username)):
+    current = get_user(username)
+    if current is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    if not current["is_admin"]:
+        raise HTTPException(status_code=403, detail="Administrator permission required")
+    return {"users": list_usernames()}
 
 
 @router.post("/users", status_code=201)

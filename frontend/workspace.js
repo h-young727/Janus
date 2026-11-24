@@ -43,6 +43,11 @@ function button(label, click, style = "secondary") {
   return action;
 }
 
+function showAlert(text = "") {
+  get("live-alert-text").textContent = text;
+  get("live-alert").hidden = !text;
+}
+
 function feedback(id, text = "", error = false) {
   const output = get(id);
   output.textContent = text;
@@ -195,6 +200,12 @@ export async function createWorkspace({ connect, refresh }) {
         })), "No registered devices.");
       } else if (tab === "access") {
         for (const control of get("access-form").querySelectorAll("button")) control.disabled = !id;
+        const result = await api("/api/users");
+        if (!current()) return;
+        const select = get("access-form").elements.username;
+        const chosen = select.value;
+        select.replaceChildren(...(result.users.length ? result.users.map(name => new Option(name, name)) : [new Option("No users yet. Create one under Users.", "")]));
+        if (result.users.includes(chosen)) select.value = chosen;
       } else if (tab === "rules") {
         get("rule-form").querySelector("button").disabled = !id || !get("rule-form").elements.metric.options.length;
         list("rule-rows", [], id ? "Loading rules…" : "Select a device to manage alert rules.");
@@ -296,7 +307,7 @@ export async function createWorkspace({ connect, refresh }) {
     const inventoryChanged = nextDevices.map(entry => entry.id + ":" + entry.name).join("|") !== devices.map(entry => entry.id + ":" + entry.name).join("|");
     const contextChanged = nextDevice?.id !== device?.id || nextSchema !== schema;
     if (inventoryChanged && !nextDevices.some(entry => entry.id === get("live-alert").dataset.device)) {
-      feedback("live-alert");
+      showAlert();
     }
     devices = nextDevices;
     device = nextDevice;
@@ -342,8 +353,11 @@ export async function createWorkspace({ connect, refresh }) {
   function message(payload) {
     if (payload.type === "alert") {
       get("live-alert").dataset.device = payload.device_id;
-      feedback("live-alert", payload.device_id + " · " + payload.metric + " " + payload.operator + " " +
-        formatValue(payload.threshold) + " · Reading " + formatValue(payload.value));
+      const source = devices.find(entry => entry.id === payload.device_id);
+      const field = payload.device_id === device?.id ? schema?.telemetry[payload.metric] : undefined;
+      const unit = field?.unit ? " " + field.unit : "";
+      showAlert("at " + clock.format(Date.now()) + " · " + (source?.name || payload.device_id) + " · " + (field?.label ?? payload.metric) + " " +
+        payload.operator + " " + formatValue(payload.threshold) + unit + " · reading " + formatValue(payload.value) + unit);
       if (view === "alerts" && device?.id === payload.device_id) refreshView();
     } else if (payload.type === "ack") {
       recentAcks.set(payload.id, payload);
@@ -415,6 +429,7 @@ export async function createWorkspace({ connect, refresh }) {
   });
   get("cancel-rule").addEventListener("click", () => editRule());
   get("refresh-alerts").addEventListener("click", refreshView);
+  get("dismiss-alert").addEventListener("click", () => showAlert());
   get("jump-commands").addEventListener("click", () => get("command-forms").querySelector("input, button")?.focus());
   async function sendCommand(name, form) {
     if (sending || commandResult?.pending || !device?.online || !device.role || device.role === "viewer") return;

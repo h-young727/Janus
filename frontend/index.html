@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#111111">
   <title>Janus</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/frontend/styles.css?v=3">
-  <script type="module" src="/frontend/dashboard.js?v=2"></script>
+  <link rel="stylesheet" href="/frontend/styles.css?v=4">
+  <script type="module" src="/frontend/dashboard.js?v=3"></script>
 </head>
 <body>
   <main id="login" class="login" hidden>
@@ -56,7 +56,7 @@
           </div>
         </div>
 
-        <p id="live-alert" class="feedback" role="status" hidden></p>
+        <div id="live-alert" class="alert-banner" role="alert" hidden><strong>Alert</strong><span id="live-alert-text"></span><button id="dismiss-alert" type="button" class="secondary">Dismiss</button></div>
         <section id="view-live" class="live-layout" aria-label="Live telemetry">
           <section class="panel telemetry" aria-label="Telemetry">
             <div id="metrics" class="metrics" aria-label="Chart metric"></div>
@@ -157,7 +157,7 @@
           <div id="admin-access" class="admin-layout" hidden>
             <form id="access-form" class="panel form-panel stacked">
               <h2>Manage device access</h2>
-              <label>User<input name="username" autocomplete="off" required></label>
+              <label>User<select name="username" aria-label="User" required></select></label>
               <label>Role<select name="role" aria-label="Role"><option value="viewer">Viewer</option><option value="operator">Operator</option></select></label>
               <div class="actions"><button class="primary">Save access</button><button id="revoke" type="button" class="danger">Revoke access</button></div>
               <p id="access-status" class="feedback" role="status" hidden></p>
