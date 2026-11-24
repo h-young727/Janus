@@ -145,7 +145,13 @@ export async function createWorkspace({ connect, refresh }) {
   function route() {
     const [path, subview] = location.hash.slice(1).split("/");
     const allowed = user ? ["live", "history", "alerts", ...(user.is_admin ? ["admin"] : [])] : ["live"];
+    const previous = view;
     view = allowed.includes(path) ? path : "live";
+    if (view === "history" && previous !== "history") {
+      const now = Date.now();
+      get("history-start").value = localInput(now - 60000);
+      get("history-end").value = localInput(now);
+    }
     tab = ["users", "devices", "access", "rules"].includes(subview) ? subview : "users";
     get("view-title").textContent = { live: "Live telemetry", history: "Past telemetry", alerts: "Alerts", admin: "Administration" }[view];
     get("window-control").hidden = view !== "live";
@@ -442,9 +448,6 @@ export async function createWorkspace({ connect, refresh }) {
     }
   }
 
-  const now = Date.now();
-  get("history-start").value = localInput(now - 60000);
-  get("history-end").value = localInput(now);
   get("query-history").disabled = true;
   bindForm("history-form", "history-status", async form => {
     const fields = new FormData(form).getAll("field");
