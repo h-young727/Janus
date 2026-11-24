@@ -2,11 +2,13 @@ import asyncio
 import json
 import sys
 from collections import deque
+from urllib.parse import urlencode
 import websockets
 
 class BackendLink:
-    def __init__(self, url: str, on_command, max_buffer: int = 1000):
+    def __init__(self, url: str, on_command, token: str = "", max_buffer: int = 1000):
         self.url = url
+        self.token = token
         self.on_command = on_command
         self.outbox = deque(maxlen=max_buffer)
         self.ready = asyncio.Event()
@@ -19,7 +21,7 @@ class BackendLink:
         delay = 1
         while True:
             try:
-                async with websockets.connect(self.url) as ws:
+                async with websockets.connect(f"{self.url}?{urlencode({'token': self.token})}") as ws:
                     print(f"backend connected: {self.url}")
                     delay = 1
                     tasks = [asyncio.create_task(self.send_loop(ws)), asyncio.create_task(self.receive_loop(ws))]

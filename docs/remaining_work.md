@@ -16,8 +16,6 @@ Build everything to work with any device. Read field and command names (like `ti
 
 **Hunter**
 - Capacity test: 10 simulated devices at 10 readings per second with 20 dashboards open, checking that everything shows up within 1 second.
-- Add a shared token so the backend only accepts known bridges.
-- Widen the schema's gyro range to ±260, and keep `tilt_deg` between -180 and 180 in the firmware.
 - User manual.
 
 ## Running it
@@ -29,14 +27,16 @@ pip install -r requirements.txt
 $env:JANUS_SECRET_KEY = "any-long-random-string"
 $env:JANUS_ADMIN_USER = "admin"
 $env:JANUS_ADMIN_PASSWORD = "adminpass1"
+$env:JANUS_BRIDGE_TOKEN = "another-long-random-string"
 python -m uvicorn backend.main:app --reload
 ```
 
 Register the device once: at http://localhost:8000/docs, log in with `POST /api/auth/login`, click **Authorize** and paste the token, then send the contents of `schemas/nucleo_tilt_motor.json` to `POST /api/devices`.
 
-In a second terminal, start the simulator:
+In a second terminal, start the simulator with the same bridge token:
 
 ```
+$env:JANUS_BRIDGE_TOKEN = "another-long-random-string"
 python bridge/bridge.py --port sim
 ```
 

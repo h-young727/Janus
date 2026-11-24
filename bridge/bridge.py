@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import os
 import threading
 import time
 import serial
@@ -9,13 +10,13 @@ from device_link import open_device, read_lines, write_line
 from protocol import envelope, parse_command, parse_line, status
 
 class Bridge:
-    def __init__(self, port: str, device_id: str, backend_url: str, schema_id: str | None = None):
+    def __init__(self, port: str, device_id: str, backend_url: str, token: str, schema_id: str | None = None):
         self.port = port
         self.device_id = device_id
         self.schema_id = schema_id
         self.device = None
         self.loop = None
-        self.link = BackendLink(backend_url, self.handle_command)
+        self.link = BackendLink(backend_url, self.handle_command, token)
 
     def publish(self, msg: dict):
         if self.schema_id:
@@ -66,8 +67,11 @@ if __name__ == "__main__":
     parser.add_argument("--device-id", default="nucleo_tilt_motor")
     parser.add_argument("--schema-id", help="schema filename stem when different from the device ID")
     parser.add_argument("--backend", default="ws://localhost:8000/ws/bridge")
+    parser.add_argument("--token", default=os.environ.get("JANUS_BRIDGE_TOKEN"), help="shared bridge token, defaults to JANUS_BRIDGE_TOKEN")
     args = parser.parse_args()
+    if not args.token:
+        parser.error("set JANUS_BRIDGE_TOKEN or pass --token")
     try:
-        asyncio.run(Bridge(args.port, args.device_id, args.backend, args.schema_id).run())
+        asyncio.run(Bridge(args.port, args.device_id, args.backend, args.token, args.schema_id).run())
     except KeyboardInterrupt:
         pass

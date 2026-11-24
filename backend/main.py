@@ -1,6 +1,8 @@
 import asyncio
 import json
 import math
+import os
+import secrets
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager, closing, suppress
@@ -23,6 +25,9 @@ from backend.permission_routes import router as permission_router
 from backend.alerts.routes import router as alert_router
 
 RETENTION_SECONDS = 14 * 24 * 60 * 60
+BRIDGE_TOKEN = os.environ.get("JANUS_BRIDGE_TOKEN")
+if not BRIDGE_TOKEN:
+    raise RuntimeError("JANUS_BRIDGE_TOKEN must be set before starting the server")
 bridges = {}
 online = set()
 dashboards = {}
@@ -248,6 +253,9 @@ async def broadcast(msg: dict):
 
 @app.websocket("/ws/bridge")
 async def bridge_socket(ws: WebSocket):
+    if not secrets.compare_digest(ws.query_params.get("token", ""), BRIDGE_TOKEN):
+        await ws.close(code=1008)
+        return
     await ws.accept()
     device_id = None
     try:
