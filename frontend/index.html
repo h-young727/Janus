@@ -56,10 +56,13 @@
           </div>
         </div>
 
+        <p id="live-alert" class="feedback" role="status" hidden></p>
         <section id="view-live" class="live-layout" aria-label="Live telemetry">
           <section class="panel telemetry" aria-label="Telemetry">
             <div id="metrics" class="metrics" aria-label="Chart metric"></div>
-            <div class="chart-heading">
+            <button type="button" id="toggle-charts" class="secondary" aria-pressed="false" hidden>Show all charts</button>
+            <div id="all-charts" hidden></div>
+            <div class="chart-heading" id="single-heading">
               <h2 id="chart-title">Signal trace</h2>
               <span id="chart-state" role="status"></span>
             </div>
@@ -93,12 +96,8 @@
             </section>
             <section id="commands" class="panel report" aria-labelledby="commands-title" hidden>
               <div class="report-heading"><h2 id="commands-title">Commands</h2></div>
-              <form id="command-form" class="stacked">
-                <label>Command<select id="command-picker" aria-label="Command"></select></label>
-                <div id="command-args" class="stacked"></div>
-                <div class="actions"><button id="command-send" class="primary">Send command</button></div>
-                <p id="command-result" class="feedback" role="status" hidden></p>
-              </form>
+              <div id="command-forms" class="stacked"></div>
+              <p id="command-result" class="feedback" role="status" hidden></p>
             </section>
           </div>
         </section>
@@ -137,7 +136,7 @@
               <div class="actions"><button class="primary">Create user</button></div>
               <p id="user-status" class="feedback" role="status" hidden></p>
             </form>
-            <section class="panel form-panel"><h2>Accounts</h2><div id="user-rows"></div></section>
+
           </div>
 
           <div id="admin-devices" class="admin-layout" hidden>
@@ -157,24 +156,24 @@
 
           <div id="admin-access" class="admin-layout" hidden>
             <form id="access-form" class="panel form-panel stacked">
-              <h2>Grant access</h2>
-              <label>User<select name="username" aria-label="User" required></select></label>
+              <h2>Manage device access</h2>
+              <label>User<input name="username" autocomplete="off" required></label>
               <label>Role<select name="role" aria-label="Role"><option value="viewer">Viewer</option><option value="operator">Operator</option></select></label>
-              <div class="actions"><button class="primary">Save access</button></div>
+              <div class="actions"><button class="primary">Save access</button><button id="revoke" type="button" class="danger">Revoke access</button></div>
               <p id="access-status" class="feedback" role="status" hidden></p>
             </form>
-            <section class="panel form-panel"><h2>Device access</h2><div id="access-rows"></div></section>
+
           </div>
 
           <div id="admin-rules" class="admin-layout" hidden>
             <form id="rule-form" class="panel form-panel stacked">
               <h2 id="rule-title">Create alert rule</h2>
-              <label>Field<select name="field" aria-label="Field" required></select></label>
+              <label>Field<select name="metric" aria-label="Field" required></select></label>
               <div class="form-row">
-                <label>Comparison<select name="op" aria-label="Comparison"><option value=">">Greater than</option><option value="<">Less than</option><option value=">=">At least</option><option value="<=">At most</option></select></label>
+                <label>Comparison<select name="operator" aria-label="Comparison"><option value=">">Greater than</option><option value="<">Less than</option><option value=">=">At least</option><option value="<=">At most</option></select></label>
                 <label>Threshold<input name="threshold" type="number" step="any" required></label>
               </div>
-              <label class="inline-check"><input name="enabled" type="checkbox" checked>Enabled</label>
+              <label id="rule-enabled" class="inline-check" hidden><input name="enabled" type="checkbox" checked>Enabled</label>
               <div class="actions"><button class="primary">Save rule</button><button id="cancel-rule" type="button" class="secondary" hidden>Cancel edit</button></div>
               <p id="rule-status" class="feedback" role="status" hidden></p>
             </form>

@@ -5,14 +5,22 @@ const formData = form => Object.fromEntries(new FormData(form));
 const localTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 const devicePath = id => "/api/devices/" + encodeURIComponent(id);
 const isNumeric = field => ["number", "integer"].includes(field.type);
-const roles = { viewer: "Viewer", operator: "Operator", administrator: "Administrator" };
 
-async function api(path, method = "GET", data) {
+const tokenKey = "janus.accessToken";
+export const accessToken = () => sessionStorage.getItem(tokenKey);
+
+export async function api(path, method = "GET", data, signal) {
+  const headers = {};
+  const token = accessToken();
+  if (token && path !== "/api/auth/login") headers.Authorization = "Bearer " + token;
+  if (data !== undefined) headers["Content-Type"] = "application/json";
   const response = await fetch(path, {
-    method, cache: "no-store",
-    ...(data === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }),
+    method, headers, cache: "no-store", signal, body: JSON.stringify(data),
   });
-  if (response.status === 401 && path !== "/api/session") location.reload();
+  if (response.status === 401 && headers.Authorization && token === accessToken()) {
+    sessionStorage.removeItem(tokenKey);
+    location.replace("/");
+  }
   const result = await response.json();
   if (!response.ok) {
     const message = Array.isArray(result.detail) ? result.detail.map(error => error.msg).join(" ") : result.detail;
@@ -82,10 +90,11 @@ function localInput(ms) {
 }
 
 export async function createWorkspace({ connect, refresh }) {
-  const response = await fetch("/api/session", { cache: "no-store" });
-  const enabled = response.status !== 404;
-  const session = enabled && response.ok ? await response.json() : {};
-  let user = session.user ?? null;
+  let user = null;
+  if (accessToken()) {
+    try { user = await api("/api/auth/me"); }
+    catch (error) { feedback("login-error", error.message, true); }
+  }
   let view = "live";
   let tab = "users";
   let device;
@@ -99,16 +108,15 @@ export async function createWorkspace({ connect, refresh }) {
   let sending = false;
   let canCommand = false;
   const recentAcks = new Map();
-  const alerts = new Map();
 
   function open() {
-    get("login").hidden = !enabled || Boolean(user);
-    get("workspace").hidden = enabled && !user;
-    get("logout").hidden = !user || session.open_preview;
+    get("login").hidden = Boolean(user);
+    get("workspace").hidden = !user;
+    get("logout").hidden = !user;
     for (const link of document.querySelectorAll("[data-session]")) link.hidden = !user;
-    for (const link of document.querySelectorAll("[data-admin]")) link.hidden = !user?.admin;
+    for (const link of document.querySelectorAll("[data-admin]")) link.hidden = !user?.is_admin;
     route();
-    if (!enabled || user) connect();
+    if (user) connect();
   }
 
   get("login-form").addEventListener("submit", async event => {
@@ -117,7 +125,9 @@ export async function createWorkspace({ connect, refresh }) {
     const submit = form.querySelector("button");
     submit.disabled = true;
     try {
-      user = (await api("/api/session", "POST", formData(form))).user;
+      const login = await api("/api/auth/login", "POST", formData(form));
+      sessionStorage.setItem(tokenKey, login.access_token);
+      user = await api("/api/auth/me");
       form.reset();
       feedback("login-error");
       open();
@@ -128,13 +138,13 @@ export async function createWorkspace({ connect, refresh }) {
     }
   });
   get("logout").addEventListener("click", async () => {
-    await api("/api/session", "DELETE");
+    sessionStorage.removeItem(tokenKey);
     location.replace("/");
   });
 
   function route() {
     const [path, subview] = location.hash.slice(1).split("/");
-    const allowed = user ? ["live", "history", "alerts", ...(user.admin ? ["admin"] : [])] : ["live"];
+    const allowed = user ? ["live", "history", "alerts", ...(user.is_admin ? ["admin"] : [])] : ["live"];
     view = allowed.includes(path) ? path : "live";
     tab = ["users", "devices", "access", "rules"].includes(subview) ? subview : "users";
     get("view-title").textContent = { live: "Live telemetry", history: "Past telemetry", alerts: "Alerts", admin: "Administration" }[view];
@@ -161,20 +171,11 @@ export async function createWorkspace({ connect, refresh }) {
       if (view === "alerts") {
         if (!id) return list("alert-rows", [], "Select a device to see its alerts.");
         list("alert-rows", [], "Loading alerts…");
-        const result = await api("/api/alerts?device=" + encodeURIComponent(id));
-        if (!current()) return;
-        const merged = new Map(result.alerts.map(alert => [alert.id, alert]));
-        for (const alert of alerts.get(id)?.values() ?? []) merged.set(alert.id, alert);
-        alerts.set(id, merged);
-        renderAlerts();
+        const result = await api("/api/alerts/history");
+        if (current()) renderAlerts(result.alerts.filter(alert => alert.device_id === id));
       }
       if (view !== "admin") return;
-      if (tab === "users") {
-        const result = await api("/api/users");
-        if (current()) list("user-rows", result.users.map(entry => ({
-          title: entry.username, detail: entry.admin ? "Administrator" : "Standard user",
-        })), "No accounts.");
-      } else if (tab === "devices") {
+      if (tab === "devices") {
         list("registered-rows", devices.map(entry => ({
           title: entry.name || entry.id, detail: entry.id,
           actions: [button("Remove", async () => {
@@ -187,41 +188,22 @@ export async function createWorkspace({ connect, refresh }) {
           }, "danger")],
         })), "No registered devices.");
       } else if (tab === "access") {
-        get("access-form").querySelector("button").disabled = !id;
-        list("access-rows", [], id ? "Loading access…" : "Select a device to manage access.");
-        if (!id) return;
-        const [members, result] = await Promise.all([api("/api/users"), api(path + "/access")]);
-        if (!current()) return;
-        const picker = get("access-form").elements.username;
-        const previous = picker.value;
-        picker.replaceChildren(...members.users.filter(entry => !entry.admin).map(entry => new Option(entry.username, entry.username)));
-        if ([...picker.options].some(option => option.value === previous)) picker.value = previous;
-        get("access-form").querySelector("button").disabled = !picker.options.length;
-        list("access-rows", result.access.map(entry => ({
-          title: entry.username, detail: roles[entry.role], actions: [button("Revoke", async () => {
-            if (!await confirmAction("Revoke access?", entry.username + " will lose access to this device.", "Revoke access")) return;
-            try {
-              await api(path + "/access/" + encodeURIComponent(entry.username), "DELETE");
-              feedback("access-status", "Access revoked.");
-              refreshView();
-            } catch (error) { feedback("access-status", error.message, true); }
-          })],
-        })), "No access grants for this device.");
+        for (const control of get("access-form").querySelectorAll("button")) control.disabled = !id;
       } else if (tab === "rules") {
-        get("rule-form").querySelector("button").disabled = !id || !get("rule-form").elements.field.options.length;
+        get("rule-form").querySelector("button").disabled = !id || !get("rule-form").elements.metric.options.length;
         list("rule-rows", [], id ? "Loading rules…" : "Select a device to manage alert rules.");
         if (!id) return;
-        const result = await api(path + "/rules");
+        const result = await api(path + "/alerts");
         if (!current()) return;
         list("rule-rows", result.rules.map(rule => ({
-          title: (schema?.telemetry[rule.field]?.label ?? rule.field) + " " + rule.op + " " + formatValue(rule.threshold),
+          title: (schema?.telemetry[rule.metric]?.label ?? rule.metric) + " " + rule.operator + " " + formatValue(rule.threshold),
           detail: rule.enabled ? "Enabled" : "Disabled",
           actions: [
             button("Edit", () => editRule(rule)),
             button("Delete", async () => {
               if (!await confirmAction("Delete alert rule?", "Existing alerts stay in the log.", "Delete rule")) return;
               try {
-                await api(path + "/rules/" + rule.id, "DELETE");
+                await api(path + "/alerts/" + rule.id, "DELETE");
                 if (editingRule === rule.id) editRule();
                 feedback("rule-status", "Rule deleted.");
                 refreshView();
@@ -232,7 +214,7 @@ export async function createWorkspace({ connect, refresh }) {
       }
     } catch (error) {
       if (!current()) return;
-      const target = view === "alerts" ? "alert-rows" : { users: "user-rows", access: "access-rows", rules: "rule-rows", devices: "registered-rows" }[tab];
+      const target = view === "alerts" ? "alert-rows" : { rules: "rule-rows", devices: "registered-rows" }[tab];
       if (target) list(target, [], error.message);
     }
   }
@@ -243,22 +225,24 @@ export async function createWorkspace({ connect, refresh }) {
     form.reset();
     get("rule-title").textContent = rule ? "Edit alert rule" : "Create alert rule";
     get("cancel-rule").hidden = !rule;
+    get("rule-enabled").hidden = !rule;
     if (rule) {
-      form.elements.field.value = rule.field;
-      form.elements.op.value = rule.op;
+      form.elements.metric.value = rule.metric;
+      form.elements.operator.value = rule.operator;
       form.elements.threshold.value = rule.threshold;
       form.elements.enabled.checked = Boolean(rule.enabled);
-      form.elements.field.focus();
+      form.elements.metric.focus();
     }
   }
 
-  function renderAlerts() {
-    const entries = [...(alerts.get(device?.id)?.values() ?? [])].sort((a, b) => b.timestamp - a.timestamp);
-    list("alert-rows", entries.slice(0, 100).map(entry => {
-      const field = schema?.telemetry[entry.field];
+  function renderAlerts(entries) {
+    list("alert-rows", entries.map(entry => {
+      const field = schema?.telemetry[entry.metric];
+      const time = new Date(entry.triggered_at.replace(" ", "T") + "Z");
       return {
-        title: (field?.label ?? entry.field) + " " + entry.op + " " + formatValue(entry.threshold),
-        detail: "Reading: " + formatValue(entry.value) + " " + (field?.unit ?? "") + " · " + localTime.format(entry.timestamp * 1000),
+        title: (field?.label ?? entry.metric) + " " + entry.operator + " " + formatValue(entry.threshold),
+        detail: "Rule " + entry.rule_id + " · Reading " + formatValue(entry.value) + " " +
+          (field?.unit ?? "") + " · " + localTime.format(time),
       };
     }), "No alerts for this device.");
   }
@@ -271,11 +255,10 @@ export async function createWorkspace({ connect, refresh }) {
     feedback("history-status");
   }
 
-  function commandFields() {
-    const name = get("command-picker").value;
-    const args = schema?.commands?.[name]?.args ?? {};
-    const target = get("command-args");
-    target.replaceChildren();
+  function commandForm(name, command) {
+    const target = node("form", "", "stacked command-form");
+    target.append(node("h3", command.label || name));
+    const args = command.args ?? {};
     for (const [key, field] of Object.entries(args)) {
       const label = node("label", (field.label ?? key) + (field.unit ? " (" + field.unit + ")" : ""));
       const input = document.createElement("input");
@@ -293,27 +276,38 @@ export async function createWorkspace({ connect, refresh }) {
       label.append(input);
       target.append(label);
     }
+    const submit = node("button", "Send command", "primary");
+    target.append(submit);
+    target.addEventListener("submit", event => {
+      event.preventDefault();
+      sendCommand(name, target);
+    });
+    return target;
   }
 
   function context(nextDevice, nextSchema, nextDevices) {
-    if (!enabled) return;
+    if (!user) return;
     const inventoryChanged = nextDevices.map(entry => entry.id + ":" + entry.name).join("|") !== devices.map(entry => entry.id + ":" + entry.name).join("|");
     const contextChanged = nextDevice?.id !== device?.id || nextSchema !== schema;
+    if (inventoryChanged && !nextDevices.some(entry => entry.id === get("live-alert").dataset.device)) {
+      feedback("live-alert");
+    }
     devices = nextDevices;
     device = nextDevice;
     schema = nextSchema;
     canCommand = Boolean(device && device.role && device.role !== "viewer" && Object.keys(schema?.commands ?? {}).length);
     get("commands").hidden = !canCommand;
     get("jump-commands").hidden = view !== "live" || !canCommand;
-    get("command-send").disabled = !device?.online || sending || Boolean(commandResult?.pending);
+    for (const submit of get("command-forms").querySelectorAll("button")) {
+      submit.disabled = !device?.online || sending || Boolean(commandResult?.pending);
+    }
     if (!contextChanged) {
       if (inventoryChanged && view === "admin" && tab === "devices") refreshView();
       return;
     }
     commandResult = undefined;
     feedback("command-result");
-    get("command-picker").replaceChildren(...Object.entries(schema?.commands ?? {}).map(([key, entry]) => new Option(entry.label ?? key, key)));
-    commandFields();
+    get("command-forms").replaceChildren(...Object.entries(schema?.commands ?? {}).map(([name, spec]) => commandForm(name, spec)));
     const fields = get("history-fields");
     fields.replaceChildren(...Object.entries(schema?.telemetry ?? {}).map(([key, field], index) => {
       const label = node("label", field.label ?? key, "choice");
@@ -327,32 +321,29 @@ export async function createWorkspace({ connect, refresh }) {
     }));
     get("query-history").disabled = !fields.children.length;
     clearHistory();
-    get("rule-form").elements.field.replaceChildren(...Object.entries(schema?.telemetry ?? {}).filter(([, field]) => isNumeric(field))
+    get("rule-form").elements.metric.replaceChildren(...Object.entries(schema?.telemetry ?? {}).filter(([, field]) => isNumeric(field))
       .map(([key, field]) => new Option(field.label ?? key, key)));
     editRule();
     refreshView();
   }
 
   function finishCommand(ack) {
-    if (commandResult?.id !== ack.id || commandResult?.device !== ack.device_id) return;
+    if (!commandResult || commandResult.id !== ack.id || commandResult?.device !== ack.device_id) return;
     commandResult.pending = false;
     feedback("command-result", (ack.ok ? "Acknowledged" : ack.error || "Rejected") + " · " + ack.id, !ack.ok);
   }
 
   function message(payload) {
-    if (payload.type === "alert" && payload.alert) {
-      const id = payload.device_id;
-      if (!alerts.has(id)) alerts.set(id, new Map());
-      const deviceAlerts = alerts.get(id);
-      deviceAlerts.set(payload.alert.id, payload.alert);
-      if (deviceAlerts.size > 100) deviceAlerts.delete(deviceAlerts.keys().next().value);
-      if (view === "alerts" && device?.id === id) renderAlerts();
+    if (payload.type === "alert") {
+      get("live-alert").dataset.device = payload.device_id;
+      feedback("live-alert", payload.device_id + " · " + payload.metric + " " + payload.operator + " " +
+        formatValue(payload.threshold) + " · Reading " + formatValue(payload.value));
+      if (view === "alerts" && device?.id === payload.device_id) refreshView();
     } else if (payload.type === "ack") {
       recentAcks.set(payload.id, payload);
       if (recentAcks.size > 64) recentAcks.delete(recentAcks.keys().next().value);
       finishCommand(payload);
     } else if (["access_changed", "device_removed"].includes(payload.type)) {
-      alerts.clear();
       refresh();
     }
   }
@@ -390,16 +381,27 @@ export async function createWorkspace({ connect, refresh }) {
     feedback("register-status", result.id + " was registered.");
   });
   bindForm("access-form", "access-status", async form => {
-    await api(devicePath(device.id) + "/access", "PUT", formData(form));
+    await api(devicePath(device.id) + "/permissions", "PUT", formData(form));
     feedback("access-status", "Access saved.");
     refreshView();
+  });
+  get("revoke").addEventListener("click", async () => {
+    const username = get("access-form").elements.username;
+    if (!device || !username.reportValidity()) return;
+    const id = device.id;
+    const name = username.value;
+    if (!await confirmAction("Revoke access?", name + " will lose access to " + id + ".", "Revoke access")) return;
+    try {
+      await api(devicePath(id) + "/permissions/" + encodeURIComponent(name), "DELETE");
+      feedback("access-status", "Access revoked.");
+    } catch (error) { feedback("access-status", error.message, true); }
   });
   bindForm("rule-form", "rule-status", async form => {
     const data = formData(form);
     data.threshold = form.elements.threshold.valueAsNumber;
     data.enabled = form.elements.enabled.checked;
     const previous = editingRule;
-    const path = devicePath(device.id) + "/rules" + (previous ? "/" + previous : "");
+    const path = devicePath(device.id) + "/alerts" + (previous ? "/" + previous : "");
     await api(path, previous ? "PUT" : "POST", data);
     editRule();
     feedback("rule-status", previous ? "Rule updated." : "Rule created.");
@@ -407,18 +409,15 @@ export async function createWorkspace({ connect, refresh }) {
   });
   get("cancel-rule").addEventListener("click", () => editRule());
   get("refresh-alerts").addEventListener("click", refreshView);
-  get("command-picker").addEventListener("change", commandFields);
-  get("jump-commands").addEventListener("click", () => get("command-picker").focus());
-  get("command-form").addEventListener("submit", async event => {
-    event.preventDefault();
+  get("jump-commands").addEventListener("click", () => get("command-forms").querySelector("input, button")?.focus());
+  async function sendCommand(name, form) {
     if (sending || commandResult?.pending || !device?.online || !device.role || device.role === "viewer") return;
     const id = device.id;
-    const name = get("command-picker").value;
-    const args = Object.fromEntries([...get("command-args").querySelectorAll("input")].map(input => [
+    const args = Object.fromEntries([...form.querySelectorAll("input")].map(input => [
       input.name, input.type === "number" ? input.valueAsNumber : input.type === "checkbox" ? input.checked : input.value,
     ]));
     sending = true;
-    get("command-send").disabled = true;
+    form.querySelector("button").disabled = true;
     feedback("command-result", "Sending…");
     try {
       const result = await api(devicePath(id) + "/commands", "POST", { name, args });
@@ -441,7 +440,7 @@ export async function createWorkspace({ connect, refresh }) {
     } finally {
       sending = false;
     }
-  });
+  }
 
   const now = Date.now();
   get("history-start").value = localInput(now - 60000);
@@ -501,5 +500,5 @@ export async function createWorkspace({ connect, refresh }) {
   });
 
   window.addEventListener("hashchange", route);
-  return { enabled, open, context, message, checkSession: () => api("/api/session").then(result => Boolean(result.user)) };
+  return { open, context, message, checkSession: () => api("/api/auth/me") };
 }

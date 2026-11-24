@@ -1,27 +1,18 @@
 # Janus dashboard
 
-From the repository root, install the dependencies and start the server:
+Follow the [project setup](../docs/remaining_work.md#running-it) to configure the
+admin account, register a device, and start the backend and simulator.
+Open [Janus](http://127.0.0.1:8000/) and sign in. The dashboard keeps the
+access token in the current tab for API requests and the live connection.
 
-```sh
-python -m pip install -r requirements.txt
-python -m uvicorn backend.main:app
-```
+Select a device and metric to plot live readings. Under Past telemetry,
+choose a time range and fields, then select Load readings.
 
-Start the simulator in a second terminal:
+Select **Show all charts** to plot every field. Drag a chart by its title to
+reorder it, or focus the title and use the arrow keys. Drag its bottom-right
+corner to resize it. Select a metric to return to its single chart.
 
-```sh
-python bridge/bridge.py --port sim
-```
-
-Open [Janus](http://127.0.0.1:8000/). The device list uses `GET /api/devices`
-and live readings arrive over `/ws/live`. Select a metric to plot it.
-
-To run a second simulator against the same schema:
-
-```sh
-python bridge/bridge.py --port sim --device-id sim_2 --schema-id nucleo_tilt_motor
-```
-
-The current API supports the live dashboard. Sign-in, history, alerts, commands
-with roles, and administration screens are in the frontend. Their integration
-will follow as the shared backend adds the corresponding endpoints.
+Operators can send a command from its form and see the device acknowledgement.
+Administrators can manage users, devices, permissions, and threshold rules
+under Admin. Under Access, enter the account username and choose the device
+in the toolbar before saving a role or revoking access.

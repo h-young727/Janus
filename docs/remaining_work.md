@@ -6,17 +6,13 @@ Build everything to work with any device. Read field and command names (like `ti
 
 ## Remaining responsibilities by team member
 
-**Daniel**
-- Log in with `POST /api/auth/login` instead of `/api/session`. Send the token it returns as `Authorization: Bearer <token>` on every request. `GET /api/auth/me` returns the username and whether they're an admin (US1).
-- Command panel: one form per command in the schema, with inputs limited by `min` and `max`. Send with `POST /api/devices/{device_id}/commands`, and show the matching `ack` from `/ws/live` (US6).
-- Alert rules: create, list, edit, and delete them with `/api/devices/{device_id}/alerts`. Show alerts as they arrive on `/ws/live` (US11, US13).
-- Admin pages: create users (`POST /api/users`), give users a role on a device (`PUT /api/devices/{device_id}/permissions`), and register devices (`POST /api/devices`) (US7, US8, US10).
-- Let users drag and resize telemetry charts, show a chart for every field at once, or go back to one.
-- Past readings chart with `GET /api/devices/{device_id}/telemetry?start=&end=&fields=`, with `start` and `end` in Unix seconds (US4).
-- Alerts list with `GET /api/alerts/history` (US5).
-- Remove a device with `DELETE /api/devices/{device_id}`, and remove a user's access with `DELETE /api/devices/{device_id}/permissions/{username}` (US9, US10).
-- Hide the command panel from viewers, using the `role` that `GET /api/devices` returns for each device (US6).
-- Connect to `/ws/live?token=<token>`.
+**Daniel — completed and tested with the simulator**
+
+- Sign-in, authenticated live telemetry, and past readings by field and time range.
+- Schema-driven command forms with range checks, matching acknowledgements, and viewer restrictions.
+- Live alerts, alert history, and rule creation, editing, disabling, and deletion.
+- User creation, device registration and removal, and granting, changing, and revoking device access.
+- Single-field and all-field charts with drag reordering and resizing in the all-field view.
 
 **Hunter**
 - Capacity test: 10 simulated devices at 10 readings per second with 20 dashboards open, checking that everything shows up within 1 second.

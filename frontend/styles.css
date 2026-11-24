@@ -219,3 +219,10 @@ dialog .actions { justify-content: flex-end; }
   .form-panel { padding: 13px; }
   .form-row { grid-template-columns: 1fr; }
 }
+
+#toggle-charts { margin-top: 1rem; }
+#all-charts { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-top: 12px; }
+.field-chart { display: flex; flex-direction: column; width: min(100%, 340px); min-width: min(220px, 100%); max-width: 100%; height: 235px; min-height: 160px; resize: both; overflow: hidden; border: 1px solid var(--slate); padding: 8px; }
+.field-chart .chart { flex: 1; min-height: 0; }
+.chart-handle { align-self: flex-start; cursor: grab; }
+.command-form + .command-form { border-top: 1px solid var(--slate); padding-top: 12px; }

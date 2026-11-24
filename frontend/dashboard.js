@@ -1,5 +1,5 @@
 import { clock, createTrace, formatValue } from "./trace.js";
-import { createWorkspace } from "./workspace.js";
+import { accessToken, api, createWorkspace } from "./workspace.js";
 
 const get = id => document.getElementById(id);
 const ui = Object.fromEntries([
@@ -11,6 +11,11 @@ const devices = new Map();
 const schemas = new Map();
 const metricButtons = new Map();
 const drawTrace = createTrace(ui.trace, ui.tooltip, ui.chart);
+const chartDeck = get("all-charts");
+const toggleCharts = get("toggle-charts");
+const fieldCharts = new Map();
+let showAll = false;
+let draggedChart;
 const requestedId = new URLSearchParams(location.search).get("device");
 
 let selected;
@@ -39,7 +44,7 @@ function selectDevice(device) {
   if (selected === device) return;
   selected = device;
   selectedMetric = undefined;
-  displayedSchema = undefined;
+  displayedSchema = null;
   metricButtons.clear();
   ui.metrics.replaceChildren();
 }
@@ -92,12 +97,7 @@ async function loadSchema(id) {
   const pending = Symbol();
   schemas.set(id, pending);
   try {
-    if (!/^[\w-]+$/.test(id)) throw new Error("Invalid schema ID");
-    const path = workspace.enabled ? "/api/devices/" + encodeURIComponent(id) + "/schema" :
-      "/schemas/" + encodeURIComponent(id) + ".json";
-    const response = await fetch(path);
-    if (!response.ok) throw new Error("Schema unavailable");
-    const schema = await response.json();
+    const schema = await api("/api/devices/" + encodeURIComponent(id) + "/schema");
     if (!schema.telemetry || typeof schema.telemetry !== "object") throw new Error("Invalid telemetry schema");
     if (schemas.get(id) === pending) schemas.set(id, schema);
   } catch {
@@ -117,9 +117,7 @@ async function seedHistory(device, schema) {
     const query = new URLSearchParams({ start: end - 60, end });
     for (const key of Object.keys(schema.telemetry)) query.append("fields", key);
     const path = "/api/devices/" + encodeURIComponent(device.id) + "/telemetry?" + query;
-    const response = await fetch(path, { cache: "no-store", signal: AbortSignal.timeout(4000) });
-    if (!response.ok) return;
-    const { samples } = await response.json();
+    const { samples } = await api(path, "GET", undefined, AbortSignal.timeout(4000));
     if (devices.get(device.id) !== device) return;
     const readings = new Map(samples.map(sample => [sample.timestamp * 1000, {
       time: sample.timestamp * 1000, data: sample.data,
@@ -136,10 +134,7 @@ async function discover(socket) {
   const touched = new Set();
   eventsDuringDiscovery = touched;
   try {
-    const response = await fetch("/api/devices", { cache: "no-store", signal: AbortSignal.timeout(4000) });
-    if (response.status === 401 && workspace.enabled) return location.reload();
-    if (!response.ok) throw new Error("Discovery unavailable");
-    const { devices: ids, device_details: details = {} } = await response.json();
+    const { devices: ids, device_details: details = {} } = await api("/api/devices", "GET", undefined, AbortSignal.timeout(4000));
     if (socket.readyState !== WebSocket.OPEN || eventsDuringDiscovery !== touched) return;
     const current = new Set([...ids, ...Object.keys(details)]);
     for (const id of current) {
@@ -150,14 +145,12 @@ async function discover(socket) {
       if (!touched.has(id)) device.online = details[id]?.connected ?? ids.includes(id);
     }
     for (const device of devices.values()) {
-      if (current.has(device.id) || (!workspace.enabled && touched.has(device.id))) continue;
-      if (workspace.enabled) {
-        devices.delete(device.id);
-        schemas.delete(device.id);
-        device.button.parentElement.remove();
-        device.option.remove();
-        if (selected === device) selectDevice(undefined);
-      } else device.online = false;
+      if (current.has(device.id)) continue;
+      devices.delete(device.id);
+      schemas.delete(device.id);
+      device.button.parentElement.remove();
+      device.option.remove();
+      if (selected === device) selectDevice(undefined);
     }
     if (!selected) selectDevice(devices.get(requestedId) ?? [...devices.values()].find(device => device.online) ?? devices.values().next().value);
     discovered = true;
@@ -182,10 +175,10 @@ function receive(event) {
   } catch {
     return;
   }
-  const { device_id: id, schema_id: schemaId, type, data } = message ?? {};
+  const { device_id: id, type, data } = message ?? {};
   if (message) workspace.message(message);
   if (typeof id !== "string" || (type !== "status" && type !== "telemetry")) return;
-  const device = remember(id, workspace.enabled ? undefined : schemaId);
+  const device = remember(id);
   eventsDuringDiscovery?.add(id);
   if (type === "status") {
     device.online = message.connected === true;
@@ -205,6 +198,7 @@ function receive(event) {
 function connect() {
   const endpoint = new URL("/ws/live", location.href);
   endpoint.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  endpoint.searchParams.set("token", accessToken());
   const socket = new WebSocket(endpoint);
   liveSocket = socket;
   socket.addEventListener("open", () => {
@@ -218,16 +212,69 @@ function connect() {
     connection = "pending";
     for (const device of devices.values()) device.online = null;
     render();
-    if (workspace.enabled && socket.readyState === WebSocket.CLOSED) {
+    if (socket.readyState === WebSocket.CLOSED) {
       try {
-        if (!await workspace.checkSession()) return location.reload();
+        await workspace.checkSession();
       } catch {
         // The server may be restarting. Retry the stream below.
       }
     }
+    if (!accessToken()) return;
     setTimeout(connect, retry);
     retry = Math.min(retry * 2, 5000);
   });
+}
+
+function addChart(key, field) {
+  const card = element("section", "field-chart");
+  const title = field.label || key;
+  const handle = element("button", "chart-handle", title + (field.unit ? " · " + field.unit : ""));
+  handle.type = "button";
+  handle.draggable = true;
+  handle.title = "Drag to reorder or use the arrow keys";
+  handle.addEventListener("dragstart", event => {
+    draggedChart = card;
+    event.dataTransfer.setData("text/plain", key);
+    event.dataTransfer.effectAllowed = "move";
+  });
+  handle.addEventListener("dragend", () => { draggedChart = undefined; });
+  handle.addEventListener("keydown", event => {
+    const forward = ["ArrowRight", "ArrowDown"].includes(event.key);
+    if (!forward && !["ArrowLeft", "ArrowUp"].includes(event.key)) return;
+    event.preventDefault();
+    const sibling = forward ? card.nextElementSibling : card.previousElementSibling;
+    if (sibling) {
+      if (forward) sibling.after(card);
+      else sibling.before(card);
+      handle.focus();
+    }
+  });
+  card.addEventListener("dragover", event => { if (draggedChart) event.preventDefault(); });
+  card.addEventListener("drop", event => {
+    event.preventDefault();
+    if (!draggedChart || draggedChart === card) return;
+    if (draggedChart.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) card.after(draggedChart);
+    else card.before(draggedChart);
+  });
+  const chart = element("div", "chart");
+  const canvas = document.createElement("canvas");
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute("aria-label", title + " over time");
+  const tooltip = element("output", "tooltip");
+  tooltip.hidden = true;
+  chart.append(canvas, tooltip);
+  card.append(handle, chart);
+  chartDeck.append(card);
+  fieldCharts.set(key, createTrace(canvas, tooltip, chart));
+}
+
+function setChartMode(all) {
+  showAll = all;
+  chartDeck.hidden = !all;
+  ui.chart.hidden = all;
+  get("single-heading").hidden = all;
+  toggleCharts.textContent = all ? "Show one chart" : "Show all charts";
+  toggleCharts.setAttribute("aria-pressed", String(all));
 }
 
 function renderMetrics(schema) {
@@ -236,7 +283,13 @@ function renderMetrics(schema) {
   selectedMetric = undefined;
   metricButtons.clear();
   ui.metrics.replaceChildren();
-  if (!schema) return;
+  fieldCharts.clear();
+  chartDeck.replaceChildren();
+  toggleCharts.hidden = !schema || !Object.keys(schema.telemetry).length;
+  if (!schema) {
+    setChartMode(false);
+    return;
+  }
   const fields = Object.entries(schema.telemetry);
   ui.metrics.style.setProperty("--metric-columns", String(Math.min(Math.max(fields.length, 1), 4)));
   selectedMetric = fields.find(([, field]) => ["number", "integer"].includes(field.type))?.[0];
@@ -247,8 +300,10 @@ function renderMetrics(schema) {
     const numeric = ["number", "integer"].includes(field.type);
     const metric = element(numeric ? "button" : "div", "metric");
     if (numeric) {
+      addChart(key, field);
       metric.type = "button";
       metric.addEventListener("click", () => {
+        setChartMode(false);
         selectedMetric = key;
         render();
       });
@@ -284,7 +339,7 @@ function render() {
     discovered ? "No devices discovered yet." : "Discovering devices…");
 
   const schema = selected ? getSchema(selected.schemaId) : undefined;
-  if (workspace.enabled && selected && schema && !selected.seeded) seedHistory(selected, schema);
+  if (selected && schema && !selected.seeded) seedHistory(selected, schema);
   workspace.context(selected, schema, [...devices.values()]);
   renderMetrics(schema);
   ui.context.hidden = Boolean(selected);
@@ -310,6 +365,15 @@ function render() {
   const field = schema?.telemetry[selectedMetric];
   const end = selected?.online === true ? now : selected?.latest?.time ?? now;
   const start = end - Number(ui.range.value) * 1000;
+  const interval = Math.max(500, 3000 / (schema?.rate_hz || 1));
+  if (showAll && selected && !get("view-live").hidden) {
+    for (const [key, draw] of fieldCharts) {
+      const points = selected.samples.filter(s => s.time >= start && s.time <= end && Number.isFinite(s.data[key]))
+        .map(s => ({ time: s.time, value: s.data[key] }));
+      draw(points, start, end, schema.telemetry[key].unit, interval);
+    }
+    return;
+  }
   const points = [];
   if (field && selected) {
     for (const sample of selected.samples) {
@@ -332,9 +396,13 @@ function render() {
     !field ? "This schema has no numeric telemetry fields." :
     selected.online === false ? "This device is offline." : "Waiting for telemetry…");
   ui.trace.style.visibility = points.length ? "visible" : "hidden";
-  drawTrace(points, start, end, field?.unit ?? "", Math.max(500, 3000 / (schema?.rate_hz || 1)));
+  drawTrace(points, start, end, field?.unit ?? "", interval);
 }
 
+toggleCharts.addEventListener("click", () => {
+  setChartMode(!showAll);
+  render();
+});
 ui.range.addEventListener("change", render);
 ui["device-picker"].addEventListener("change", event => chooseDevice(devices.get(event.target.value)));
 workspace = await createWorkspace({
@@ -343,4 +411,8 @@ workspace = await createWorkspace({
 });
 new ResizeObserver(render).observe(ui.chart);
 setInterval(render, 200);
+// Permission and registration changes can originate in another dashboard.
+setInterval(() => {
+  if (liveSocket?.readyState === WebSocket.OPEN && !eventsDuringDiscovery) discover(liveSocket);
+}, 5000);
 workspace.open();
