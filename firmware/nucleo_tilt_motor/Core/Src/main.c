@@ -83,6 +83,15 @@ static void MX_I2C1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static float wrap180(float angle)
+{
+  while (angle > 180.0f)
+    angle -= 360.0f;
+  while (angle < -180.0f)
+    angle += 360.0f;
+  return angle;
+}
+
 static void uart_print(const char *s)
 {
   HAL_UART_Transmit(&huart2, (uint8_t *)s, strlen(s), HAL_MAX_DELAY);
@@ -389,7 +398,10 @@ int main(void)
         if (dt > 0.5f)
           tilt_deg = accel_tilt;
         else
-          tilt_deg = FILTER_ALPHA * (tilt_deg + gyro[1] * dt) + (1.0f - FILTER_ALPHA) * accel_tilt;
+        {
+          float predicted = tilt_deg + gyro[1] * dt;
+          tilt_deg = wrap180(predicted + (1.0f - FILTER_ALPHA) * wrap180(accel_tilt - predicted));
+        }
         send_telemetry(accel, gyro);
         HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
       }

@@ -8,9 +8,9 @@
     "ax": {"type": "number", "label": "Accel X", "unit": "g", "min": -2, "max": 2},
     "ay": {"type": "number", "label": "Accel Y", "unit": "g", "min": -2, "max": 2},
     "az": {"type": "number", "label": "Accel Z", "unit": "g", "min": -2, "max": 2},
-    "gx": {"type": "number", "label": "Gyro X", "unit": "deg/s", "min": -250, "max": 250},
-    "gy": {"type": "number", "label": "Gyro Y", "unit": "deg/s", "min": -250, "max": 250},
-    "gz": {"type": "number", "label": "Gyro Z", "unit": "deg/s", "min": -250, "max": 250},
+    "gx": {"type": "number", "label": "Gyro X", "unit": "deg/s", "min": -260, "max": 260},
+    "gy": {"type": "number", "label": "Gyro Y", "unit": "deg/s", "min": -260, "max": 260},
+    "gz": {"type": "number", "label": "Gyro Z", "unit": "deg/s", "min": -260, "max": 260},
     "motor_duty": {"type": "number", "label": "Motor speed", "unit": "%", "min": 0, "max": 100}
   },
   "commands": {
